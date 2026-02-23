@@ -1,0 +1,53 @@
+pipeline {
+    agent none  // Default none, we will define per stage
+
+    // PARAMETERS
+    parameters {
+        choice(name: 'ENV', choices: ['dev', 'qa', 'prod'], description: 'Select target environment')
+        string(name: 'TAG', defaultValue: '1.0.0', description: 'Application tag/version')
+    }
+
+    stages {
+        stage('Build on Master') {
+            agent any
+            steps {
+                echo "Building React App for environment: ${params.ENV} and tag: ${params.TAG}"
+
+                git branch: 'main', url: 'https://github.com/srajadurai212/React_Deployment.git'
+                sh 'npm install'
+
+                // Optional: set environment variable for React build
+                sh "export REACT_APP_ENV=${params.ENV}"
+
+                // Build React app
+                sh 'npm run build'
+
+                // Save build folder for slave
+                stash includes: 'build/**', name: 'react-build'
+            }
+        }
+
+        stage('Deploy on Slave') {
+            agent { label 'Slave' }
+            steps {
+                echo "Deploying React App to environment: ${params.ENV} with tag: ${params.TAG}"
+
+                // Get the build folder from master
+                unstash 'react-build'
+
+                // Option 1: Serve with node serve
+                sh 'npm install -g serve'
+                sh "serve -s build -l 3000"  // can make port dynamic if you want
+
+                // Option 2: Or copy to web server directory
+                // sh "cp -r build /var/www/${params.ENV}-${params.TAG}/"
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished for ENV: ${params.ENV}, TAG: ${params.TAG}"
+        }
+    }
+}
